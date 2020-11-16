@@ -1,0 +1,72 @@
+# Version 1.000
+# Ansible 2.7.7
+
+---
+
+- hosts: all
+  gather_facts: yes
+  user: cloud_user
+  become: true
+
+  tasks:
+    - name: Remove old Docker
+      apt: name={{ item }} state=absent update_cache=true
+      with_items:
+        - docker
+        - docker-client
+        - docker-client-latest
+        - docker-common
+        - docker-latest
+        - docker-latest-logrotate
+        - docker-logrotate
+        - docker-engine
+        - docker-ce
+        - docker-cli
+      ignore_errors: yes
+
+    - name: Install prereqs
+      apt: name={{ item }} state=latest update_cache=true
+      with_items:
+        - apt-transport-https
+        - ca-certificates
+        - curl
+        - gnupg2
+        - software-properties-common
+
+    - name: Add an Apt signing key
+      apt_key:
+        url: https://download.docker.com/linux/debian/gpg
+        state: present
+
+    - name: Add Docker repo
+      apt_repository:
+        repo: deb https://download.docker.com/linux/debian {{ ansible_distribution_release }} stable
+        state: present
+
+    - name: Install Docker
+      apt: name={{ item }} state=latest update_cache=true
+      with_items:
+        - docker-ce
+
+    - name: Copy Docker startup
+      copy:
+        remote_src: yes
+        src: /lib/systemd/system/docker.service
+        dest: /etc/systemd/system/docker.service
+
+    - name: Customize Docker for Kunbernetes
+      replace:
+        path: /etc/systemd/system/docker.service
+        regexp: '(^ExecStart.*$)'
+        replace: '\1 --exec-opt native.cgroupdriver=systemd'
+
+    - name: Reload systemd
+      systemd:
+        daemon-reload: yes
+
+    - name: start Docker
+      service:
+        name: docker
+        state: restarted
+        enabled: yes
+

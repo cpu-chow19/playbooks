@@ -1,0 +1,64 @@
+
+---
+
+- hosts: docker
+  user: root
+  tasks:
+    - name: Remove old Docker
+      yum: name={{ item }} state=absent update_cache=true
+      with_items:
+        - docker
+        - docker-client 
+        - docker-client-latest 
+        - docker-common 
+        - docker-latest 
+        - docker-latest-logrotate 
+        - docker-logrotate 
+        - docker-engine
+      ignore_errors: yes
+
+    - name: Install prereqs
+      yum: name={{ item }} state=latest update_cache=true
+      with_items:
+        - yum-utils 
+        - device-mapper-persistent-data 
+        - lvm2
+
+    - name: Add Docker repo
+      yum_repository:
+        name: docker-ce-stable
+        description: Docker CE Stable - $basearch
+        baseurl: https://download.docker.com/linux/centos/7/$basearch/stable
+        enabled: yes
+        gpgcheck: yes
+        gpgkey: https://download.docker.com/linux/centos/gpg
+
+    - name: Install Docker
+      yum: name={{ item }} state=latest update_cache=true
+      with_items: 
+        - docker-ce
+        - docker-ce-cli 
+        - containerd.io
+
+    - name: Copy Docker startup
+      copy:
+        remote_src: yes
+        src: /usr/lib/systemd/system/docker.service
+        dest: /etc/systemd/system/docker.service
+
+    - name: Customize Docker for Kunbernetes
+      replace:
+        path: /etc/systemd/system/docker.service
+        regexp: '(^ExecStart.*$)'
+        replace: '\1 --exec-opt native.cgroupdriver=systemd' 
+
+    - name: Reload systemd
+      systemd: 
+        daemon-reload: yes
+
+    - name: start Docker
+      service: 
+        name: docker 
+        state: restarted 
+        enabled: yes
+
