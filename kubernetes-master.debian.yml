@@ -1,0 +1,17 @@
+# Version 1.000 
+# Ansible 2.7.7
+# K8s master only
+
+---
+- hosts: all
+  user: cloud_user
+  become: yes
+  vars:
+    k8s_version: "1.19.3-00"
+  tasks:
+   - name: install kubectl
+     apt:
+       name: kubectl={{ k8s_version }}
+       state: present
+       force: yes
+
