@@ -1,33 +1,86 @@
+# Version: 1.001
+# Debian and Ubuntu
+
+---
 - hosts: k8s_master
-  become: yes
+  vars:
+      pod_cidr: "10.244.0.0/16"
+
   tasks:
-    - name: initialize the cluster
-      shell: kubeadm init --pod-network-cidr=10.244.0.0/16 >> cluster_initialized.txt
+    - name: Get base user
+      shell: whoami
+      changed_when: false
+      register: base_user
+
+    - name: get base user group
+      shell: id -g
+      changed_when: false
+      register: base_user_group
+
+    - name: get user home directory
+      shell: "getent passwd {{ base_user.stdout }}  | awk -F:  '{ print $6 }'"
+      changed_when: false
+      register: base_user_home
+
+    - name: Initialize the cluster
+      become: yes
+      become_user: root
+      shell: kubeadm init --pod-network-cidr="{{ pod_cidr }}" >> cluster_initialized.txt
       args:
         chdir: $HOME
         creates: cluster_initialized.txt
 
-    - name: create .kube directory
+    - name: Get cluster join command
       become: yes
-      become_user: cloud_user
+      become_user: root
+      shell: cat /root/cluster_initialized.txt  | tail -n 2 | tr '\\\n' '  '
+      register: join_cmd
+
+    - name: create .kube directory
       file:
         path: $HOME/.kube
         state: directory
         mode: 0755
 
     - name: copy admin.conf to user's kube config
+      become: yes
+      become_user: root
       copy:
         src: /etc/kubernetes/admin.conf
-        dest: /home/cloud_user/.kube/config
+        dest: "{{ base_user_home.stdout }}/.kube/config"
+        directory_mode: "u=rwx,g=,o="
+        mode: "u=rw,g=,o="
+        owner: "{{ base_user.stdout }}"
+        group: "{{ base_user_group.stdout }}"
         remote_src: yes
-        owner: cloud_user
 
-    - name: install Pod network
-      become: yes
-      become_user: cloud_user
-##      shell: kubectl apply -f https://raw.githubusercontent.com/coreos/flannel/a70459be0084506e4ec919aa1c114638878db11b/Documentation/kube-flannel.yml >> pod_network_setup.txt
+    - name: install flannel Pod network
       shell: kubectl apply -f https://raw.githubusercontent.com/coreos/flannel/master/Documentation/kube-flannel.yml >> pod_network_setup.txt
+#           originally ...flannel/a70459be0084506e4ec919aa1c114638878db11b/Documentation/kube-flannel.yml
+#           or calico: kubectl apply -f https://docs.projectcalico.org/v3.14/manifests/calico.yaml
       args:
         chdir: $HOME
         creates: pod_network_setup.txt
+
+    - name: display join_cmd
+      debug:
+        var: join_cmd.stdout
+        verbosity: 0
+
+    - name: pass join cmd
+      add_host:
+        name: COMMON
+        join_cmd: "{{ join_cmd.stdout }}"
+
+- hosts: k8s_workers
+  tasks:
+    - name: display join_cmd
+      debug:
+        var: hostvars['COMMON']['join_cmd']
+        verbosity: 0
+
+    - name: Join worker
+      become: yes
+      become_user: root
+      command: "{{ hostvars['COMMON']['join_cmd'] }}"
 

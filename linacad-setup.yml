@@ -1,0 +1,61 @@
+# Version: 1.000
+
+---
+- hosts: all
+  vars_prompt:
+    - name: myhome
+      prompt: "Your home directory? "
+      private: no
+
+    - name: mykey
+      prompt: "Your key           ? "
+      private: no
+
+  vars:
+      mykeyfile: "{{ myhome }}/.ssh/{{ mykey }}.pub"
+
+  tasks:
+    - name: Get base user
+      shell: whoami
+      changed_when: false
+      register: base_user
+
+    - name: get base user group
+      shell: id -g
+      changed_when: false
+      register: base_user_group
+
+    - name: get user home directory
+      shell: getent passwd {{ base_user.stdout }}  | awk -F':'  '{ print $6 }'
+      changed_when: false
+      register: base_user_home
+
+    - name: Set authorized keys
+      authorized_key:
+        user: "{{ base_user.stdout }}"
+        state: present
+        key: "{{ lookup('file', '{{ mykeyfile }}') }}"
+
+    - name: Free up sudo
+      become: yes
+      become_user: root
+      replace:
+        path: /etc/sudoers.d/90-cloud-init-users
+        regexp: '^.*cloud_user.*$'
+        replace: 'cloud_user ALL=(ALL:ALL) NOPASSWD:ALL'
+
+    - name: Freeze hostname 1
+      become: yes
+      become_user: root
+      command: chattr -i /etc/hostname
+
+    - name: Freeze hostname 2
+      become: yes
+      become_user: root
+      command: chmod o-w /etc/hostname
+
+    - name: Freeze hostname 3
+      become: yes
+      become_user: root
+      command: chattr +i /etc/hostname
+

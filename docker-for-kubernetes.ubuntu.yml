@@ -8,7 +8,29 @@
   become: true
   become_user: root
 
+  pre_tasks:
+    - name: Enforce minmum Ansible v2.10.2
+      assert:
+        that: "ansible_version.full is version_compare('2.10.2', '>=')"
+        msg: >
+            "You must update Ansible to at least 2.10.2 to run this playbook."
+
   tasks:
+    - name: x
+      debug:
+        var: ansible_distribution
+        verbosity: 0
+
+    - name: x
+      debug:
+        var: ansible_distribution_version
+        verbosity: 0
+
+    - name: x
+      debug:
+        var: ansible_distribution_release
+        verbosity: 0
+
     - name: Remove old Docker
       apt: name={{ item }} state=absent update_cache=true
       with_items:
@@ -35,12 +57,12 @@
 
     - name: Add an Apt signing key
       apt_key:
-        url: https://download.docker.com/linux/debian/gpg
+        url: https://download.docker.com/linux/ubuntu/gpg
         state: present
 
     - name: Add Docker repo
       apt_repository:
-        repo: deb https://download.docker.com/linux/debian {{ ansible_distribution_release }} stable
+        repo: deb https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable
         state: present
 
     - name: Install Docker
